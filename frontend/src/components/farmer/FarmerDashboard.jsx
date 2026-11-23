@@ -58,8 +58,24 @@ export default function FarmerDashboard() {
   const setActiveTab = (tab)     => setSearchParams({ tab, lang });
   const setLang      = (newLang) => setSearchParams({ tab: activeTab, lang: newLang });
 
-  // ── Restore logged-in farmer on page reload ───────────────────────────────
+  // ── Restore logged-in farmer on page reload (skip when landing forces auth) ─
   useEffect(() => {
+    const authParam = searchParams.get('auth'); // 'register' | 'login' | null
+    if (authParam === 'register') {
+      // Landing "Register" CTA — always show auth screen in register mode
+      setIsLoggedIn(false);
+      setAuthMode('register');
+      sessionStorage.removeItem('farmer_khasra');
+      return;
+    }
+    if (authParam === 'login') {
+      // Landing "Existing Farmer Login" CTA — show auth screen in login mode
+      setIsLoggedIn(false);
+      setAuthMode('login');
+      sessionStorage.removeItem('farmer_khasra');
+      return;
+    }
+    // Normal reload — restore saved session
     const savedKhasra = sessionStorage.getItem('farmer_khasra');
     if (savedKhasra) { setLoginKhasra(savedKhasra); fetchFarmerData(savedKhasra); }
   }, []);
