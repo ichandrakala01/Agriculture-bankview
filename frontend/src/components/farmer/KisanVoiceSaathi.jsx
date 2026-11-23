@@ -204,34 +204,59 @@ export default function KisanVoiceSaathi({
     if (!activeRef.current) return;
     setStatus('speaking');
     setAssistantText(text);
-    try {
+
+    // ── Try edge-tts neural audio ──────────────────────────────────────────
+    const tryNeuralAudio = async () => {
       const res = await fetch('/api/farmer/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text, lang }),
       });
-      if (!res.ok) throw new Error('TTS unavailable');
+      if (!res.ok) throw new Error(`TTS ${res.status}`);
       const blob = await res.blob();
-      if (!activeRef.current) return;
+      if (!activeRef.current) return 'inactive';
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
       audioRef.current = audio;
-      audio.onended = () => { URL.revokeObjectURL(url); if (activeRef.current && onFinished) onFinished(); };
-      audio.onerror = () => { URL.revokeObjectURL(url); if (activeRef.current && onFinished) onFinished(); };
-      await audio.play();
+      return new Promise((resolve) => {
+        audio.onended = () => { URL.revokeObjectURL(url); resolve('ended'); };
+        audio.onerror = () => { URL.revokeObjectURL(url); resolve('error'); };
+        audio.play().catch(() => { URL.revokeObjectURL(url); resolve('blocked'); });
+      });
+    };
+
+    // ── Browser speechSynthesis fallback ──────────────────────────────────
+    const trySpeechSynthesis = () => {
+      return new Promise((resolve) => {
+        if (!activeRef.current) { resolve('inactive'); return; }
+        window.speechSynthesis.cancel();
+        const voices = window.speechSynthesis.getVoices();
+        const u = new SpeechSynthesisUtterance(text);
+        const v = voices.find((x) => x.name.includes('Swara') || x.name.includes('Google हिन्दी') || x.lang === 'hi-IN');
+        if (v) u.voice = v;
+        u.lang = lang === 'en' ? 'en-IN' : 'hi-IN';
+        u.rate = 0.93;
+        // Resolve only when utterance truly finishes — no arbitrary timeout
+        u.onend   = () => resolve('ended');
+        u.onerror = () => resolve('error');
+        window.speechSynthesis.speak(u);
+      });
+    };
+
+    try {
+      const result = await tryNeuralAudio();
+      if (result === 'blocked' || result === 'error') {
+        await trySpeechSynthesis();
+      }
     } catch {
-      // Fallback to browser speechSynthesis when offline
-      if (!activeRef.current) return;
-      window.speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(text);
-      const voices = window.speechSynthesis.getVoices();
-      const v = voices.find((x) => x.name.includes('Swara') || x.name.includes('Google हिन्दी') || x.lang === 'hi-IN');
-      if (v) u.voice = v;
-      u.lang = lang === 'en' ? 'en-IN' : 'hi-IN';
-      u.rate = 0.93;
-      u.onend   = () => { if (activeRef.current && onFinished) onFinished(); };
-      u.onerror = () => { if (activeRef.current && onFinished) onFinished(); };
-      window.speechSynthesis.speak(u);
+      try { await trySpeechSynthesis(); } catch { /* ignore */ }
+    }
+
+    // 250ms gap after audio ends before opening the mic —
+    // prevents the mic picking up the speaker's last syllable.
+    if (activeRef.current) {
+      await new Promise((r) => setTimeout(r, 250));
+      onFinished?.();
     }
   };
 

@@ -1,4 +1,6 @@
 import os
+from dotenv import load_dotenv
+load_dotenv()
 import random
 import tempfile
 from datetime import datetime
@@ -189,9 +191,17 @@ async def generate_natural_tts(req: TTSRequest):
     voice = "en-IN-NeerjaNeural" if req.lang == "en" else "hi-IN-SwaraNeural"
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
     tmp.close()
-    communicate = edge_tts.Communicate(req.text, voice=voice, rate="-4%")
-    await communicate.save(tmp.name)
-    return FileResponse(tmp.name, media_type="audio/mpeg")
+    try:
+        communicate = edge_tts.Communicate(req.text, voice=voice, rate="-4%")
+        await communicate.save(tmp.name)
+        import os as _os
+        if _os.path.getsize(tmp.name) == 0:
+            raise ValueError("empty audio file")
+        return FileResponse(tmp.name, media_type="audio/mpeg")
+    except Exception:
+        # Return 503 so the frontend catches it and falls back to browser TTS
+        from fastapi import Response
+        return Response(status_code=503)
 
 
 # ── STT: Whisper-large-v3 via Groq (falls back to browser if no key) ─────────
