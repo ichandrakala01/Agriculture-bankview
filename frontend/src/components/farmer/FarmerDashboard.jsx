@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import KisanVoiceSaathi from './KisanVoiceSaathi';
 
-const API_BASE = '/api/farmer';
+const API_BASE = `${import.meta.env.VITE_API_URL || ''}/api/farmer`;
 
 const LOCALIZED_RULES = {
   cg: [
