@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Building2, ShieldCheck, LogOut, MapPin,
   LayoutDashboard, BarChart3, Lock, BellRing,
@@ -10,9 +11,15 @@ import PolicyAnalyticsTab from './PolicyAnalyticsTab';
 const DISTRICTS = ['ALL', 'Dhamtari', 'Raipur', 'Durg', 'Mahasamund'];
 
 export default function BankDashboard() {
-  const [officer, setOfficer] = useState(null);
-  const [activeTab, setActiveTab] = useState('queue');
-  const [selectedDistrict, setSelectedDistrict] = useState('ALL');
+  const [officer, setOfficer] = useState(() => {
+    try { const s = sessionStorage.getItem('bank_officer'); return s ? JSON.parse(s) : null; } catch { return null; }
+  });
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab        = searchParams.get('tab')      || 'queue';
+  const selectedDistrict = searchParams.get('district') || 'ALL';
+  const setActiveTab        = (tab)      => setSearchParams({ tab, district: selectedDistrict });
+  const setSelectedDistrict = (district) => setSearchParams({ tab: activeTab, district });
+
   const [loginForm, setLoginForm] = useState({
     institution: 'Chhattisgarh Rajya Gramin Bank',
     employeeId: 'CRGB-EMP-4092',
@@ -23,13 +30,17 @@ export default function BankDashboard() {
 
   const handleLogin = (e) => {
     e.preventDefault();
-    setOfficer(loginForm);
-    setSelectedDistrict(loginForm.assignedDistrict);
+    const profile = { ...loginForm };
+    sessionStorage.setItem('bank_officer', JSON.stringify(profile));
+    setOfficer(profile);
+    setSearchParams({ tab: 'queue', district: loginForm.assignedDistrict });
   };
 
   const quickDemoLogin = (district, roleLabel, empId) => {
-    setOfficer({ institution: 'Chhattisgarh Rajya Gramin Bank', employeeId: empId, ifsc: 'CRGB0001042', assignedDistrict: district, roleLabel });
-    setSelectedDistrict(district);
+    const profile = { institution: 'Chhattisgarh Rajya Gramin Bank', employeeId: empId, ifsc: 'CRGB0001042', assignedDistrict: district, roleLabel };
+    sessionStorage.setItem('bank_officer', JSON.stringify(profile));
+    setOfficer(profile);
+    setSearchParams({ tab: 'queue', district });
   };
 
   // ── LOGIN SCREEN ──────────────────────────────────────────────────────────
@@ -132,7 +143,7 @@ export default function BankDashboard() {
                 {DISTRICTS.map((d) => <option key={d} value={d}>{d === 'ALL' ? 'All Districts' : d}</option>)}
               </select>
             </div>
-            <button onClick={() => setOfficer(null)} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-red-900/60 text-slate-200 border border-slate-700 transition">
+            <button onClick={() => { sessionStorage.removeItem('bank_officer'); setOfficer(null); setSearchParams({}); }} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-red-900/60 text-slate-200 border border-slate-700 transition">
               <LogOut className="w-3.5 h-3.5" /> Sign Out
             </button>
           </div>

@@ -9,7 +9,7 @@ export default function App() {
 
   return (
     <div>
-      <div className="bg-stone-950 text-white px-4 py-2 text-xs flex items-center justify-between border-b border-stone-800">
+      <div className="bg-stone-950 text-white px-4 py-2 text-xs flex items-center justify-between border-b border-stone-800 sticky top-0 z-40">
         <span className="font-bold tracking-wide text-amber-400">
           CG AGRI-TRANSPARENCY &amp; CREDIT PORTAL
         </span>
@@ -35,9 +35,9 @@ export default function App() {
 
       <Routes>
         <Route path="/" element={<Navigate to="/farmer" replace />} />
-        <Route path="/bank/*" element={<BankDashboard />} />
-        <Route path="/farmer/*" element={<FarmerDashboard />} />
-        <Route path="*" element={<Navigate to="/farmer" replace />} />
+        <Route path="/farmer" element={<FarmerDashboard />} />
+        <Route path="/bank" element={<BankDashboard />} />
+        <Route path="*" element={<Navigate to={isBank ? '/bank' : '/farmer'} replace />} />
       </Routes>
     </div>
   );

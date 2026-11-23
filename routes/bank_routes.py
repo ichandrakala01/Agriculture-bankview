@@ -3,7 +3,7 @@ import fastapi
 import pydantic
 
 from shared.database import records_collection, sanctions_collection, grievances_collection
-from shared.rule_engine import load_all_records, evaluate_entitlements_and_flags
+from shared.rule_engine import load_all_records, evaluate_entitlements_and_flags, build_simple_gov_remark
 
 router = fastapi.APIRouter()
 
@@ -110,6 +110,7 @@ def sync_land_record(khasra_no: str):
         raise fastapi.HTTPException(status_code=404, detail="Khasra number not found")
 
     e_before = evaluate_entitlements_and_flags(record)
+    simple_remark = build_simple_gov_remark(e_before, action="SYNCED")
     records_collection.update_one(
         {"khasra_no": khasra_no},
         {"$set": {
@@ -119,11 +120,12 @@ def sync_land_record(khasra_no: str):
             "msp_received": e_before["expected_msp"],
             "pmfby_portal_uploaded": True,
             "audit_status": "Synced with Bhuiyan",
+            "bank_remark": simple_remark,
         }},
     )
     grievances_collection.update_many(
         {"khasra_no": khasra_no},
-        {"$set": {"step": 3, "status": "Bhuiyan Synced & Shortfall Approved"}},
+        {"$set": {"step": 3, "status": "Bhuiyan Synced & Shortfall Approved", "bank_remark": simple_remark}},
     )
     return verify_khasra(khasra_no)
 
@@ -139,15 +141,18 @@ def submit_decision(req: DecisionRequest):
     record = next((r for r in load_all_records() if r["khasra_no"] == req.khasra_no), None)
     if record is None:
         raise fastapi.HTTPException(status_code=404, detail="Khasra number not found")
-    records_collection.update_one({"khasra_no": req.khasra_no}, {"$set": {"audit_status": req.decision}})
+    clean_remark = req.reason.strip() if req.reason and req.reason.strip() else "No remarks"
+    e = evaluate_entitlements_and_flags(record)
+    simple_remark = build_simple_gov_remark(e, action=req.decision)
+    records_collection.update_one({"khasra_no": req.khasra_no}, {"$set": {"audit_status": req.decision, "bank_remark": simple_remark}})
     sanctions_collection.insert_one({
         "khasra_no": req.khasra_no, "decision": req.decision,
-        "reason": req.reason, "decided_at": datetime.datetime.now().strftime("%d-%m-%Y %H:%M"),
+        "reason": clean_remark, "decided_at": datetime.datetime.now().strftime("%d-%m-%Y %H:%M"),
     })
     if req.decision == "APPROVE":
-        grievances_collection.update_many({"khasra_no": req.khasra_no}, {"$set": {"step": 3, "status": "Approved & Disbursed by Bank"}})
+        grievances_collection.update_many({"khasra_no": req.khasra_no}, {"$set": {"step": 3, "status": "Approved & Disbursed by Bank", "bank_remark": simple_remark}})
     else:
-        grievances_collection.update_many({"khasra_no": req.khasra_no}, {"$set": {"step": 2, "status": f"Bank Review: {req.decision}"}})
+        grievances_collection.update_many({"khasra_no": req.khasra_no}, {"$set": {"step": 2, "status": f"Bank Review: {req.decision}", "bank_remark": simple_remark}})
     return {"khasra_no": req.khasra_no, "decision": req.decision, "status": "recorded"}
 
 

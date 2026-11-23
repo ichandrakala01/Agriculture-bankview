@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Mic, Volume2, AlertTriangle, CheckCircle, Copy, Check, Printer,
   Upload, ShieldCheck, UserPlus, LogIn, Calculator, Clock, BookOpen, Landmark,
@@ -7,14 +8,32 @@ import KisanVoiceSaathi from './KisanVoiceSaathi';
 
 const API_BASE = '/api/farmer';
 
-const RULES = [
-  { k: 'MSP (Paddy)', v: '₹3,100 per quintal (CG Krishak Unnati)' },
-  { k: 'KCC Scale of Finance', v: 'Irrigated ₹50,000/ha • Unirrigated ₹35,000/ha' },
-  { k: 'Collateral-Free KCC', v: 'Up to ₹2,00,000 (RBI norm)' },
-  { k: 'PMFBY Sum Insured', v: 'Irrigated ₹66,000/ha • Unirrigated ₹45,000/ha' },
-  { k: 'RBI Calamity Relief', v: '≥33% crop loss → restructuring + 4% subvention' },
-  { k: 'KCC Interest Subvention', v: '4% if repaid on time (else 7%)' },
-];
+const LOCALIZED_RULES = {
+  cg: [
+    { k: 'धान खरीदी MSP (कृषक उन्नति योजना)', v: '₹3,100 प्रति क्विंटल (21 क्विंटल/एकड़ तक खरीदी सीमा)' },
+    { k: 'KCC ऋण सीमा (Scale of Finance)', v: 'सिंचित: ₹50,000/हेक्टेयर • असिंचित: ₹35,000/हेक्टेयर' },
+    { k: 'बिना गारंटी KCC ऋण (RBI नियम)', v: '₹2,00,000 तक के कृषि ऋण म कोई गारंटी नइ लागय' },
+    { k: 'फसल बीमा (PMFBY)', v: 'सिंचित: ₹66,000/हेक्टेयर • असिंचित: ₹45,000/हेक्टेयर (2% किसान प्रीमियम)' },
+    { k: 'RBI आपदा राहत', v: '33% या ज्यादा फसल नुकसान म ऋण पुनर्गठन अऊ 4% ब्याज छूट जारी रहिथे' },
+    { k: 'KCC ब्याज सबवेंशन', v: 'समय म पटाय ले 7% के जगह सिर्फ 4% सालाना ब्याज लगथे' },
+  ],
+  hi: [
+    { k: 'धान खरीदी MSP (कृषक उन्नति योजना)', v: '₹3,100 प्रति क्विंटल (21 क्विंटल/एकड़ अधिकतम सीमा)' },
+    { k: 'KCC ऋण सीमा (Scale of Finance)', v: 'सिंचित: ₹50,000/हेक्टेयर • असिंचित: ₹35,000/हेक्टेयर' },
+    { k: 'बिना गारंटी KCC ऋण (RBI नियम)', v: '₹2,00,000 तक के फसल ऋण पर कोई गारंटी आवश्यक नहीं' },
+    { k: 'फसल बीमा (PMFBY)', v: 'सिंचित: ₹66,000/हेक्टेयर • असिंचित: ₹45,000/हेक्टेयर (2% प्रीमियम)' },
+    { k: 'RBI आपदा राहत', v: '≥33% फसल क्षति पर ऋण पुनर्गठन एवं 4% ब्याज सब्सिडी' },
+    { k: 'KCC ब्याज सबवेंशन', v: 'समय पर भुगतान करने पर केवल 4% ब्याज (7% के स्थान पर)' },
+  ],
+  en: [
+    { k: 'MSP Paddy (CG Krishak Unnati)', v: '₹3,100 per quintal (up to 21 quintals/acre limit)' },
+    { k: 'KCC Scale of Finance', v: 'Irrigated ₹50,000/ha • Unirrigated ₹35,000/ha' },
+    { k: 'Collateral-Free KCC (RBI Norm)', v: 'Zero collateral required for crop loans up to ₹2,00,000' },
+    { k: 'PMFBY Sum Insured', v: 'Irrigated ₹66,000/ha • Unirrigated ₹45,000/ha (2% Kharif premium)' },
+    { k: 'RBI Calamity Relief', v: '≥33% crop loss triggers loan restructuring + 4% interest protection' },
+    { k: 'KCC Interest Subvention', v: '4% effective interest on timely repayment (3% off base rate)' },
+  ],
+};
 
 const inr = (n = 0) => `₹${Number(n || 0).toLocaleString('en-IN')}`;
 
@@ -27,12 +46,23 @@ export default function FarmerDashboard() {
   const [activeGrievance, setActiveGrievance] = useState(null);
   const [ocrResult, setOcrResult] = useState(null);
   const [calcResult, setCalcResult] = useState(null);
-  const [lang, setLang] = useState('cg');
-  const [activeTab, setActiveTab] = useState('overview');
   const [listening, setListening] = useState(false);
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // ── URL-driven tab + lang (survives F5) ───────────────────────────────────
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = searchParams.get('tab')  || 'overview';
+  const lang      = searchParams.get('lang') || 'cg';
+  const setActiveTab = (tab)     => setSearchParams({ tab, lang });
+  const setLang      = (newLang) => setSearchParams({ tab: activeTab, lang: newLang });
+
+  // ── Restore logged-in farmer on page reload ───────────────────────────────
+  useEffect(() => {
+    const savedKhasra = sessionStorage.getItem('farmer_khasra');
+    if (savedKhasra) { setLoginKhasra(savedKhasra); fetchFarmerData(savedKhasra); }
+  }, []);
 
   const [regForm, setRegForm] = useState({
     khasra_no: '', owner_name: '', father_name: '', aadhaar_last4: '',
@@ -74,6 +104,7 @@ export default function FarmerDashboard() {
       const data = await api(`/check/${encodeURIComponent(khasraNo)}`);
       setRecord(data);
       setIsLoggedIn(true);
+      sessionStorage.setItem('farmer_khasra', khasraNo);
       try { setGrievances(await api(`/grievances/${encodeURIComponent(khasraNo)}`)); } catch { /* none yet */ }
     } catch (err) {
       setError(err.message);
@@ -163,10 +194,16 @@ export default function FarmerDashboard() {
     rec.onresult = (e) => {
       const spoken = e.results[0][0].transcript;
       setListening(false);
-      if (spoken.includes('शिकायत')) handleFileGrievance();
-      else if (spoken.includes('हिसाब') || spoken.includes('कैलकुलेटर')) setActiveTab('calculator');
-      else if (spoken.includes('नियम')) setActiveTab('rules');
-      else if (spoken.includes('जमीन')) setActiveTab('overview');
+      if (spoken.includes('शिकायत') || spoken.includes('complaint') || spoken.includes('grievance')) {
+        handleFileGrievance();
+        speak(lang === 'en' ? 'Filing your grievance now.' : 'तुंहर शिकायत दर्ज करत हंव।');
+      } else if (spoken.includes('हिसाब') || spoken.includes('कैलकुलेटर') || spoken.includes('calculator')) {
+        setActiveTab('calculator');
+      } else if (spoken.includes('नियम') || spoken.includes('योजना') || spoken.includes('rules')) {
+        setActiveTab('rules');
+      } else if (spoken.includes('जमीन') || spoken.includes('land')) {
+        setActiveTab('overview');
+      }
     };
     rec.onerror = () => setListening(false);
     rec.onend = () => setListening(false);
@@ -336,7 +373,7 @@ export default function FarmerDashboard() {
             {[{ code: 'cg', label: 'छत्तीसगढ़ी' }, { code: 'hi', label: 'हिंदी' }, { code: 'en', label: 'EN' }].map((l) => (
               <button key={l.code} onClick={() => setLang(l.code)} className={`px-3 py-2 rounded-xl text-xs font-bold ${lang === l.code ? 'bg-white text-emerald-950' : 'bg-emerald-800 text-emerald-100'}`}>{l.label}</button>
             ))}
-            <button onClick={() => { setIsLoggedIn(false); setRecord(null); setGrievances([]); }} className="px-3 py-2 rounded-xl text-xs bg-stone-800 hover:bg-stone-700">Switch Farmer</button>
+            <button onClick={() => { setIsLoggedIn(false); setRecord(null); setGrievances([]); sessionStorage.removeItem('farmer_khasra'); sessionStorage.removeItem('farmer_tab'); sessionStorage.removeItem('farmer_lang'); }} className="px-3 py-2 rounded-xl text-xs bg-stone-800 hover:bg-stone-700">Switch Farmer</button>
           </div>
         </div>
       </header>
@@ -345,22 +382,12 @@ export default function FarmerDashboard() {
         {tabs.map((t) => {
           const Icon = t.icon;
           return (
-            <button key={t.id} onClick={() => setActiveTab(t.id)} className={`px-4 py-2.5 rounded-xl font-bold text-sm flex items-center gap-2 transition ${activeTab === t.id ? 'bg-emerald-700 text-white shadow' : 'bg-white text-stone-700 border border-stone-200 hover:bg-stone-50'}`}>
+            <button key={t.id} onClick={() => { setActiveTab(t.id); if (t.id === 'grievances') fetchFarmerData(record.khasra_no); }} className={`px-4 py-2.5 rounded-xl font-bold text-sm flex items-center gap-2 transition ${activeTab === t.id ? 'bg-emerald-700 text-white shadow' : 'bg-white text-stone-700 border border-stone-200 hover:bg-stone-50'}`}>
               <Icon className="w-4 h-4" />{t.label}
             </button>
           );
         })}
       </nav>
-
-      <div className="max-w-6xl mx-auto px-6 pt-4">
-        <KisanVoiceSaathi
-          mode="post_register_guide"
-          record={record}
-          onFileGrievance={handleFileGrievance}
-          onOpenRules={() => { setActiveTab('rules'); speak(RULES.map((r) => `${r.k}: ${r.v}`).join('. ')); }}
-          onOpenCalculator={() => setActiveTab('calculator')}
-        />
-      </div>
 
       <main className="max-w-6xl mx-auto px-6 py-6">
         {error && <div className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</div>}
@@ -419,6 +446,24 @@ export default function FarmerDashboard() {
                   : record.flags.map((f) => <span key={f} className="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">{f.replaceAll('_', ' ')}</span>)}
               </div>
             </div>
+            <div className="bg-blue-50/70 border border-blue-200 rounded-2xl p-4 flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-extrabold uppercase tracking-wider text-blue-800">
+                  {lang === 'en' ? 'Official Bank Audit Message' : lang === 'hi' ? 'बैंक अधिकारी का आधिकारिक संदेश' : 'बैंक अधिकारी के आधिकारिक संदेश'}
+                </p>
+                <p className="text-sm font-semibold text-slate-900 mt-1 leading-relaxed">
+                  {typeof record.bank_remark === 'object'
+                    ? record.bank_remark[lang] || record.bank_remark.hi
+                    : record.bank_remark || 'No remarks'}
+                </p>
+              </div>
+              <button
+                onClick={() => speak(typeof record.bank_remark === 'object' ? record.bank_remark[lang] || record.bank_remark.hi : record.bank_remark)}
+                className="shrink-0 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center gap-1"
+              >
+                <Volume2 className="w-3.5 h-3.5" /> सुनव
+              </button>
+            </div>
           </div>
         )}
 
@@ -463,6 +508,18 @@ export default function FarmerDashboard() {
           <div className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <button onClick={handleFileGrievance} className="bg-amber-500 hover:bg-amber-600 text-stone-950 font-bold px-4 py-2.5 rounded-xl flex items-center gap-2 shadow-sm"><ShieldCheck className="w-4 h-4" /> File Grievance with DLGRC + 14447</button>
+              <button
+                onClick={() => {
+                  speak(lang === 'en'
+                    ? 'Generating and filing your official complaint to the Collector and Bank now.'
+                    : 'राम-राम भैया, तुंहर आधिकारिक शिकायत पत्र तैयार करके कलेक्टर अऊ बैंक ल भेजत हंव।');
+                  handleFileGrievance();
+                }}
+                className="bg-emerald-700 hover:bg-emerald-600 text-white font-bold px-4 py-2.5 rounded-xl flex items-center gap-2 shadow-sm"
+              >
+                <Mic className="w-4 h-4" />
+                {lang === 'en' ? 'File Grievance by Voice' : lang === 'hi' ? 'बोलकर शिकायत दर्ज करें' : 'बोल के शिकायत दर्ज करव'}
+              </button>
               <button onClick={() => fetchFarmerData(record.khasra_no)} className="bg-white border border-stone-300 hover:bg-stone-50 text-stone-800 font-bold px-4 py-2.5 rounded-xl text-xs">↻ Refresh Live Bank Status</button>
             </div>
 
@@ -521,15 +578,23 @@ export default function FarmerDashboard() {
 
         {activeTab === 'rules' && (
           <div className="space-y-4">
+            <KisanVoiceSaathi
+              mode="scheme_guide"
+              lang={lang}
+              record={record}
+              onFileGrievance={handleFileGrievance}
+            />
             <div className="flex items-center justify-between">
-              <h3 className="font-bold text-stone-800 flex items-center gap-2"><BookOpen className="w-5 h-5 text-emerald-700" /> Scheme Rules</h3>
-              <button onClick={() => speak(RULES.map((r) => `${r.k}: ${r.v}`).join('. '))} className="px-3 py-2 bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1"><Volume2 className="w-4 h-4" /> Play Audio Guide</button>
+              <h3 className="font-bold text-stone-800 flex items-center gap-2">
+                <BookOpen className="w-5 h-5 text-emerald-700" />
+                {lang === 'en' ? 'Official Government Scheme Rules & Farmer Rights' : lang === 'hi' ? 'सरकारी योजना नियम एवं किसान अधिकार' : 'सरकारी योजना नियम अऊ किसान मन के अधिकार'}
+              </h3>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {RULES.map((r) => (
-                <div key={r.k} className="bg-white border border-slate-200 rounded-2xl p-4">
-                  <p className="text-xs font-bold text-emerald-700">{r.k}</p>
-                  <p className="text-sm text-stone-800 mt-1">{r.v}</p>
+              {(LOCALIZED_RULES[lang] || LOCALIZED_RULES.cg).map((r) => (
+                <div key={r.k} className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+                  <p className="text-xs font-extrabold text-emerald-700">{r.k}</p>
+                  <p className="text-sm text-stone-800 mt-1 font-medium">{r.v}</p>
                 </div>
               ))}
             </div>

@@ -32,7 +32,7 @@ export default function ComparisonDrawer({ khasraNo, onClose, onUpdated }) {
 
   const handleDecision = async (decision) => {
     setBusy(true);
-    await bankApi.submitDecision(khasraNo, decision, reason || `Officer action: ${decision}`);
+    await bankApi.submitDecision(khasraNo, decision, reason.trim());
     setBusy(false);
     onUpdated(`Application ${khasraNo} marked as ${decision}.`);
     onClose();
@@ -127,6 +127,15 @@ export default function ComparisonDrawer({ khasraNo, onClose, onUpdated }) {
             <p className="text-xs font-bold text-slate-600 mb-1">Counter Explanation for Farmer (छत्तीसगढ़ी / हिंदी):</p>
             <p className="text-sm text-slate-800 leading-relaxed">{counterScript}</p>
             <button onClick={speakCounter} className="mt-2 flex items-center gap-1.5 text-xs font-bold text-emerald-700 hover:underline"><Volume2 className="w-4 h-4" /> Play Audio</button>
+          </div>
+
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+            <p className="text-xs font-bold text-blue-800 mb-1 uppercase tracking-wide">Official Audit Summary (English — shown to farmer in their language)</p>
+            <p className="text-sm text-slate-800 leading-relaxed">
+              {typeof record.auto_gov_remark === 'object'
+                ? record.auto_gov_remark.en
+                : record.bank_remark?.en || 'Audit pending.'}
+            </p>
           </div>
         </div>
 
