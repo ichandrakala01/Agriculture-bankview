@@ -170,7 +170,8 @@ export default function KisanVoiceSaathi({
       voices.find((v) => v.name.includes('Google हिन्दी')) ||
       voices.find((v) => v.lang === 'hi-IN') ||
       voices.find((v) => v.lang === 'en-IN') ||
-      voices[0]
+      voices[0] ||
+      null
     );
   };
 
@@ -227,16 +228,18 @@ export default function KisanVoiceSaathi({
     rec.onresult = (e) => {
       let interim = '';
       for (let i = e.resultIndex; i < e.results.length; i++) {
-        if (e.results[i].isFinal) finalSpoken += e.results[i].transcript;
-        else interim += e.results[i].transcript;
+        const t = e.results[i][0].transcript;
+        if (e.results[i].isFinal) finalSpoken += t + ' ';
+        else interim += t;
       }
-      setLiveCaption(finalSpoken || interim);
+      setLiveCaption((finalSpoken + interim).trim());
     };
 
     rec.onend = () => {
       if (!activeRef.current) return;
+      const cleanSpoken = finalSpoken.trim();
       const q = REGISTRATION_QUESTIONS[idx];
-      const parsed = q.parse(finalSpoken);
+      const parsed = cleanSpoken ? q.parse(cleanSpoken) : null;
 
       if (parsed !== null && parsed !== '' && parsed !== undefined) {
         setRegForm((prev) => ({
@@ -321,10 +324,11 @@ export default function KisanVoiceSaathi({
     rec.onresult = (e) => {
       let interim = '';
       for (let i = e.resultIndex; i < e.results.length; i++) {
-        if (e.results[i].isFinal) spoken += e.results[i].transcript;
-        else interim += e.results[i].transcript;
+        const t = e.results[i][0].transcript;
+        if (e.results[i].isFinal) spoken += t + ' ';
+        else interim += t;
       }
-      setLiveCaption(spoken || interim);
+      setLiveCaption((spoken + interim).trim());
     };
 
     rec.onend = () => {
