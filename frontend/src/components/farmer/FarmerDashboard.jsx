@@ -3,6 +3,7 @@ import {
   Mic, Volume2, AlertTriangle, CheckCircle, Copy, Check, Printer,
   Upload, ShieldCheck, UserPlus, LogIn, Calculator, Clock, BookOpen, Landmark,
 } from 'lucide-react';
+import KisanVoiceSaathi from './KisanVoiceSaathi';
 
 const API_BASE = '/api/farmer';
 
@@ -234,7 +235,14 @@ export default function FarmerDashboard() {
                 <button onClick={() => fetchFarmerData(loginKhasra)} disabled={loading} className="w-full bg-emerald-700 hover:bg-emerald-600 text-white font-bold py-3.5 rounded-xl shadow">{loading ? 'Loading...' : 'Open My Portal →'}</button>
               </div>
             ) : (
-              <form onSubmit={handleRegister} className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+              <>
+                <KisanVoiceSaathi
+                  mode="register"
+                  setRegForm={setRegForm}
+                  onSubmitRegistration={() => document.getElementById('register-submit-btn')?.click()}
+                />
+
+                <form onSubmit={handleRegister} className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                 <label className="block sm:col-span-2">
                   <span className="block text-xs font-bold text-stone-600 mb-1">Khasra Number *</span>
                   <input required placeholder="e.g. 205/1" value={regForm.khasra_no} onChange={(e) => setRegForm({ ...regForm, khasra_no: e.target.value })} className="w-full px-3 py-2 border border-stone-300 rounded-xl" />
@@ -295,10 +303,11 @@ export default function FarmerDashboard() {
                     <option value="Irrigated">Irrigated (सिंचित)</option>
                   </select>
                 </label>
-                <button disabled={loading} className="sm:col-span-2 bg-emerald-700 hover:bg-emerald-600 text-white font-bold py-3 rounded-xl mt-1">
+                <button id="register-submit-btn" disabled={loading} className="sm:col-span-2 bg-emerald-700 hover:bg-emerald-600 text-white font-bold py-3 rounded-xl mt-1">
                   Save to MongoDB &amp; Launch Portal →
                 </button>
               </form>
+              </>
             )}
           </div>
         </div>
@@ -342,6 +351,16 @@ export default function FarmerDashboard() {
           );
         })}
       </nav>
+
+      <div className="max-w-6xl mx-auto px-6 pt-4">
+        <KisanVoiceSaathi
+          mode="post_register_guide"
+          record={record}
+          onFileGrievance={handleFileGrievance}
+          onOpenRules={() => { setActiveTab('rules'); speak(RULES.map((r) => `${r.k}: ${r.v}`).join('. ')); }}
+          onOpenCalculator={() => setActiveTab('calculator')}
+        />
+      </div>
 
       <main className="max-w-6xl mx-auto px-6 py-6">
         {error && <div className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</div>}
