@@ -1,7 +1,12 @@
+import os
 import random
+import tempfile
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException
+import edge_tts
+import httpx
+from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from shared.database import records_collection, grievances_collection
@@ -170,3 +175,55 @@ def submit_grievance(req: GrievanceRequest):
 @router.get("/grievances/{khasra_no:path}")
 def get_farmer_grievances(khasra_no: str):
     return list(grievances_collection.find({"khasra_no": khasra_no}, {"_id": 0}))
+
+
+# ── TTS: Neural Indian voice via edge-tts (SwaraNeural) ─────────────────────
+class TTSRequest(BaseModel):
+    text: str
+    lang: str = "cg"
+
+
+@router.post("/tts")
+async def generate_natural_tts(req: TTSRequest):
+    """Generates natural neural Indian voice (SwaraNeural) for Chhattisgarhi/Hindi/English."""
+    voice = "en-IN-NeerjaNeural" if req.lang == "en" else "hi-IN-SwaraNeural"
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+    tmp.close()
+    communicate = edge_tts.Communicate(req.text, voice=voice, rate="-4%")
+    await communicate.save(tmp.name)
+    return FileResponse(tmp.name, media_type="audio/mpeg")
+
+
+# ── STT: Whisper-large-v3 via Groq (falls back to browser if no key) ─────────
+@router.post("/stt")
+async def transcribe_chhattisgarhi_audio(audio: UploadFile = File(...)):
+    """Transcribes recorded farmer voice using Whisper-large-v3 (handles Chhattisgarhi + Hindi)."""
+    groq_key   = os.getenv("GROQ_API_KEY")
+    openai_key = os.getenv("OPENAI_API_KEY")
+    api_key    = groq_key or openai_key
+
+    if not api_key:
+        return {"text": "", "fallback": True}
+
+    if groq_key:
+        url   = "https://api.groq.com/openai/v1/audio/transcriptions"
+        model = "whisper-large-v3"
+    else:
+        url   = "https://api.openai.com/v1/audio/transcriptions"
+        model = "whisper-1"
+
+    audio_bytes = await audio.read()
+    files = {"file": ("voice.webm", audio_bytes, audio.content_type or "audio/webm")}
+    data  = {
+        "model": model,
+        "language": "hi",
+        "prompt": "छत्तीसगढ़ी और हिंदी किसान पंजीयन: खसरा नंबर, धमतरी, रायपुर, दुर्ग, महासमुंद, सिंचित, असिंचित, हेक्टेयर, बटा।",
+    }
+    headers = {"Authorization": f"Bearer {api_key}"}
+
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        res = await client.post(url, headers=headers, data=data, files=files)
+        if res.status_code == 200:
+            return {"text": res.json().get("text", "").strip(), "fallback": False}
+
+    return {"text": "", "fallback": True}

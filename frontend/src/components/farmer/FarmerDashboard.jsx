@@ -215,11 +215,11 @@ export default function FarmerDashboard() {
     if (record.total_shortfall === 0 && record.flags.length === 0) {
       return lang === 'en'
         ? `Hello ${record.owner_name}! All MSP, KCC and PMFBY records for Khasra ${record.khasra_no} are verified and accurate.`
-        : `राम-राम ${record.owner_name} भैया! तुंहर खसरा ${record.khasra_no} के जम्मो हिसाब अऊ भुइयां रिकॉर्ड बिल्कुल सही हे।`;
+        : `नमस्ते ${record.owner_name} जी। तुंहर खसरा ${record.khasra_no} के जम्मो हिसाब अऊ भुइयां रिकॉर्ड बिल्कुल सही हे।`;
     }
     return lang === 'en'
       ? `Alert ${record.owner_name}: shortfall of ₹${record.total_shortfall.toLocaleString()} on Khasra ${record.khasra_no} (${record.flags.join(', ')}).`
-      : `राम-राम ${record.owner_name} भैया! तुंहर खसरा ${record.khasra_no} म कुल ₹${record.total_shortfall.toLocaleString()} के कमी मिले हे। भुइयां म जमीन ${record.actual_irrigation} हे फेर बैंक ${record.bank_recorded_irrigation} लिख दे हे।`;
+      : `नमस्ते ${record.owner_name} जी। तुंहर खसरा ${record.khasra_no} म कुल ₹${record.total_shortfall.toLocaleString()} के कमी मिले हे। भुइयां म जमीन ${record.actual_irrigation} हे फेर बैंक ${record.bank_recorded_irrigation} लिख दे हे।`;
   };
 
   const copyLetter = () => {
@@ -512,7 +512,7 @@ export default function FarmerDashboard() {
                 onClick={() => {
                   speak(lang === 'en'
                     ? 'Generating and filing your official complaint to the Collector and Bank now.'
-                    : 'राम-राम भैया, तुंहर आधिकारिक शिकायत पत्र तैयार करके कलेक्टर अऊ बैंक ल भेजत हंव।');
+                    : 'नमस्ते, आपका आधिकारिक शिकायत पत्र तैयार कर संबंधित अधिकारी को भेजा जा रहा है।');
                   handleFileGrievance();
                 }}
                 className="bg-emerald-700 hover:bg-emerald-600 text-white font-bold px-4 py-2.5 rounded-xl flex items-center gap-2 shadow-sm"

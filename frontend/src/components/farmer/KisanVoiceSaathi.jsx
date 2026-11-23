@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Mic, Square, Volume2, Sparkles } from 'lucide-react';
+import { Mic, Square, Volume2, Sparkles, CheckCircle2 } from 'lucide-react';
 
-// ── DYNAMIC NUMBER PARSER ────────────────────────────────────────────────────
+// ── DYNAMIC NUMBER & KHASRA PARSER ───────────────────────────────────────────
 const BASE_HINDI_NUMS = {
   'शून्य': 0, 'जीरो': 0, 'नहीं': 0, 'नइ': 0, 'कोई नहीं': 0,
   'एक': 1, 'दो': 2, 'तीन': 3, 'चार': 4, 'पांच': 5, 'पाँच': 5,
@@ -14,31 +14,20 @@ const BASE_HINDI_NUMS = {
 const MULTIPLIERS = { 'सौ': 100, 'हजार': 1000, 'हज़ार': 1000, 'लाख': 100000 };
 
 function parseSpokenNumber(raw) {
-  // Strip %, ₹, commas, and Hindi punctuation so "45%" → "45"
   const txt = raw.toLowerCase().replace(/[%₹,।?!]/g, ' ').trim();
   if (txt.includes('डेढ़')) return 1.5;
   if (txt.includes('ढाई')) return 2.5;
   if (txt === 'नहीं' || txt === 'नइ' || txt.includes('कोई नुकसान नहीं') || txt.includes('zero')) return 0;
-
-  // Direct digit fallback — catches "45", "2.5", "100000" anywhere in phrase
   const directDigit = txt.match(/(\d+(\.\d+)?)/);
   if (directDigit && !txt.includes('हजार') && !txt.includes('लाख') && !txt.includes('सौ')) {
     return parseFloat(directDigit[1]);
   }
-
   const tokens = txt.split(/\s+/);
-  let total = 0;
-  let current = 0;
-  let foundAny = false;
-
+  let total = 0, current = 0, foundAny = false;
   for (const token of tokens) {
-    if (/^\d+(\.\d+)?$/.test(token)) {
-      current += parseFloat(token);
-      foundAny = true;
-    } else if (BASE_HINDI_NUMS[token] !== undefined) {
-      current += BASE_HINDI_NUMS[token];
-      foundAny = true;
-    } else if (MULTIPLIERS[token] !== undefined) {
+    if (/^\d+(\.\d+)?$/.test(token)) { current += parseFloat(token); foundAny = true; }
+    else if (BASE_HINDI_NUMS[token] !== undefined) { current += BASE_HINDI_NUMS[token]; foundAny = true; }
+    else if (MULTIPLIERS[token] !== undefined) {
       const mult = MULTIPLIERS[token];
       current = (current === 0 ? 1 : current) * mult;
       if (mult >= 1000) { total += current; current = 0; }
@@ -70,54 +59,86 @@ function parseDistrict(raw) {
   return 'Dhamtari';
 }
 
-// ── REGISTRATION QUESTIONS ────────────────────────────────────────────────────
-const REGISTRATION_QUESTIONS = [
+// ── REGISTRATION QUESTIONS (trilingual, formal/institutional) ───────────────
+const getRegistrationQuestions = (lang) => [
   {
     field: 'owner_name',
-    ask: 'राम-राम भैया! चलव मिलके तुंहर पंजीयन करथन। सबसे पहिली बतावव — आप के नाम का हे?',
-    confirm: (v) => `बहुत बढ़िया ${v} जी! नाम लिख लेंव।`,
-    parse: (txt) => txt.replace(/मेरा नाम|मोर नाम|है|हे|हवे/g, '').trim() || null,
+    ask: lang === 'en'
+      ? 'Welcome to the Farmer Portal. Please state your full name to begin registration.'
+      : lang === 'hi'
+      ? 'नमस्ते। पंजीकरण प्रारंभ करने के लिए कृपया अपना पूरा नाम बताएं।'
+      : 'नमस्ते। पंजीयन शुरू करे बर कृपया अपन पूरा नाम बतावव।',
+    confirm: (v) => lang === 'en' ? `Recorded name: ${v}.` : `नाम ${v} दर्ज किया गया।`,
+    parse: (txt) => txt.replace(/मेरा नाम|मोर नाम|है|हे|हवे|my name is/gi, '').trim() || null,
   },
   {
     field: 'father_name',
-    ask: 'अब आप के पिता जी के नाम बतावव?',
-    confirm: (v) => `ठीक हे, ${v} जी दर्ज कर लेंव।`,
-    parse: (txt) => txt.replace(/पिता जी का नाम|नाम|है|हे/g, '').trim() || null,
+    ask: lang === 'en'
+      ? "Please state your father's or spouse's full name."
+      : lang === 'hi'
+      ? 'कृपया अपने पिता या पति का नाम बताएं।'
+      : 'कृपया अपन पिता या पति के नाम बतावव।',
+    confirm: (v) => lang === 'en' ? `Recorded: ${v}.` : `${v} दर्ज किया गया।`,
+    parse: (txt) => txt.replace(/पिता जी का नाम|नाम|है|हे/gi, '').trim() || null,
   },
   {
     field: 'khasra_no',
-    ask: 'तुंहर खेत के खसरा नंबर का हे? जइसे कि 205 बटा 1।',
-    confirm: (v) => `खसरा नंबर ${v} लिख लेंव।`,
+    ask: lang === 'en'
+      ? 'Please state your land Khasra number, for example 205 slash 1.'
+      : lang === 'hi'
+      ? 'कृपया अपनी भूमि का खसरा नंबर बताएं, जैसे 205 बटा 1।'
+      : 'कृपया अपन जमीन के खसरा नंबर बतावव, जइसे 205 बटा 1।',
+    confirm: (v) => lang === 'en' ? `Khasra number ${v} recorded.` : `खसरा नंबर ${v} दर्ज किया गया।`,
     parse: (txt) => { const r = parseKhasra(txt); return r && r.includes('/') ? r : null; },
   },
   {
     field: 'mobile',
-    ask: 'आप के मोबाइल नंबर बतावव?',
-    confirm: (v) => `मोबाइल नंबर ${v} दर्ज होगे।`,
+    ask: lang === 'en'
+      ? 'Please state your 10-digit registered mobile number.'
+      : lang === 'hi'
+      ? 'कृपया अपना 10 अंकों का मोबाइल नंबर बताएं।'
+      : 'कृपया अपन 10 अंक के मोबाइल नंबर बतावव।',
+    confirm: (v) => lang === 'en' ? `Mobile number ${v} recorded.` : `मोबाइल नंबर ${v} दर्ज किया गया।`,
     parse: (txt) => { const d = txt.replace(/\D/g, ''); return d.length >= 6 ? d.slice(0, 10) : null; },
   },
   {
     field: 'district',
-    ask: 'आप कौन से जिला ले हव — धमतरी, रायपुर, दुर्ग, या महासमुंद?',
-    confirm: (v) => `ठीक हे, ${v} जिला चुन लेंव।`,
+    ask: lang === 'en'
+      ? 'Please state your district: Dhamtari, Raipur, Durg, or Mahasamund.'
+      : lang === 'hi'
+      ? 'कृपया अपना जिला बताएं: धमतरी, रायपुर, दुर्ग, या महासमुंद।'
+      : 'कृपया अपन जिला बतावव: धमतरी, रायपुर, दुर्ग, या महासमुंद।',
+    confirm: (v) => lang === 'en' ? `District set to ${v}.` : `${v} जिला चुना गया।`,
     parse: (txt) => parseDistrict(txt),
   },
   {
     field: 'village',
-    ask: 'आप के गांव के नाम का हे?',
-    confirm: (v) => `गांव ${v} लिख लेंव।`,
-    parse: (txt) => txt.replace(/गांव|ग्राम|है|हे/g, '').trim() || null,
+    ask: lang === 'en'
+      ? 'Please state your village name.'
+      : lang === 'hi'
+      ? 'कृपया अपने गांव का नाम बताएं।'
+      : 'कृपया अपन गांव के नाम बतावव।',
+    confirm: (v) => lang === 'en' ? `Village ${v} recorded.` : `ग्राम ${v} दर्ज किया गया।`,
+    parse: (txt) => txt.replace(/गांव|ग्राम|है|हे/gi, '').trim() || null,
   },
   {
     field: 'area_hectares',
-    ask: 'कतना जमीन हे आप के पास? हेक्टेयर म बतावव, जइसे कि 2 हेक्टेयर।',
-    confirm: (v) => `${v} हेक्टेयर जमीन लिख लेंव।`,
+    ask: lang === 'en'
+      ? 'Please state your total land area in hectares, for example 2 hectares.'
+      : lang === 'hi'
+      ? 'कृपया कुल भूमि क्षेत्रफल हेक्टेयर में बताएं, जैसे 2 हेक्टेयर।'
+      : 'कृपया कुल जमीन क्षेत्रफल हेक्टेयर म बतावव, जइसे 2 हेक्टेयर।',
+    confirm: (v) => lang === 'en' ? `${v} hectares recorded.` : `${v} हेक्टेयर दर्ज किया गया।`,
     parse: (txt) => parseSpokenNumber(txt),
   },
   {
     field: 'actual_irrigation',
-    ask: 'तुंहर जमीन सिंचित हे या असिंचित हे?',
-    confirm: (v) => v === 'Irrigated' ? 'सिंचित जमीन दर्ज कर लेंव।' : 'असिंचित जमीन दर्ज कर लेंव।',
+    ask: lang === 'en'
+      ? 'Is your land Irrigated or Unirrigated as per Bhuiyan records?'
+      : lang === 'hi'
+      ? 'भुइयां रिकॉर्ड के अनुसार आपकी भूमि सिंचित है या असिंचित?'
+      : 'भुइयां रिकॉर्ड के अनुसार तुंहर जमीन सिंचित हे या असिंचित?',
+    confirm: (v) => lang === 'en' ? `Irrigation status set to ${v}.` : `${v === 'Irrigated' ? 'सिंचित' : 'असिंचित'} दर्ज किया गया।`,
     parse: (txt) => {
       if (txt.includes('असिंचित') || txt.includes('सूखा') || txt.includes('unirrigated')) return 'Unirrigated';
       if (txt.includes('सिंचित') || txt.includes('पानी') || txt.includes('irrigated')) return 'Irrigated';
@@ -126,48 +147,42 @@ const REGISTRATION_QUESTIONS = [
   },
   {
     field: 'crop_loss_pct',
-    ask: 'आखिरी सवाल — फसल म कतना प्रतिशत नुकसान होइस? जइसे 45 प्रतिशत, या नुकसान नइ होइस त शून्य बोलव।',
-    confirm: (v) => `${v} प्रतिशत नुकसान लिख लेंव। अब तुंहर खाता बनाके योजना के जांच करत हंव!`,
-    // 0 is valid — do not reject it
-    parse: (txt) => {
-      const n = parseSpokenNumber(txt);
-      return (n !== null && n >= 0 && n <= 100) ? n : null;
-    },
+    ask: lang === 'en'
+      ? 'Please state the percentage of crop loss, if any, or say zero.'
+      : lang === 'hi'
+      ? 'यदि फसल क्षति हुई है तो प्रतिशत बताएं, अन्यथा शून्य बोलें।'
+      : 'यदि फसल नुकसान होइस हे त प्रतिशत बतावव, नहीं त शून्य बोलव।',
+    confirm: (v) => lang === 'en'
+      ? `${v} percent crop loss recorded. Submitting your registration now.`
+      : `${v} प्रतिशत दर्ज किया गया। आपका पंजीकरण पूर्ण किया जा रहा है।`,
+    parse: (txt) => { const n = parseSpokenNumber(txt); return (n !== null && n >= 0 && n <= 100) ? n : null; },
   },
 ];
 
 // ── COMPONENT ─────────────────────────────────────────────────────────────────
 export default function KisanVoiceSaathi({
-  mode = 'register',   // 'register' | 'scheme_guide'
+  mode = 'register',
   lang = 'cg',
   setRegForm,
   onSubmitRegistration,
   record = null,
   onFileGrievance,
 }) {
-  const [active, setActive]           = useState(false);
-  const [status, setStatus]           = useState('idle');
-  const [stepIndex, setStepIndex]     = useState(0);
-  const [liveCaption, setLiveCaption] = useState('');
+  const [active, setActive]               = useState(false);
+  const [status, setStatus]               = useState('idle'); // idle | speaking | listening | processing
+  const [stepIndex, setStepIndex]         = useState(0);
+  const [liveCaption, setLiveCaption]     = useState('');
   const [assistantText, setAssistantText] = useState('');
 
   const activeRef      = useRef(false);
+  const audioRef       = useRef(null);
+  const recorderRef    = useRef(null);
+  const streamRef      = useRef(null);
   const recognitionRef = useRef(null);
-
-  const getHumanVoice = () => {
-    const voices = window.speechSynthesis.getVoices();
-    return (
-      voices.find((v) => v.name.includes('Swara') && v.lang.includes('hi')) ||
-      voices.find((v) => v.name.includes('Google हिन्दी')) ||
-      voices.find((v) => v.lang === 'hi-IN') ||
-      voices.find((v) => v.lang === 'en-IN') ||
-      voices[0] ||
-      null
-    );
-  };
+  const retryCountRef  = useRef(0);
 
   useEffect(() => {
-    window.speechSynthesis.getVoices();
+    window.speechSynthesis?.getVoices();
     return () => stopVoice();
   }, []);
 
@@ -175,93 +190,186 @@ export default function KisanVoiceSaathi({
     activeRef.current = false;
     setActive(false);
     setStatus('idle');
-    window.speechSynthesis.cancel();
+    window.speechSynthesis?.cancel();
+    if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
+    if (recorderRef.current && recorderRef.current.state !== 'inactive') {
+      try { recorderRef.current.stop(); } catch { /* ignore */ }
+    }
+    if (streamRef.current) { streamRef.current.getTracks().forEach((t) => t.stop()); streamRef.current = null; }
     try { recognitionRef.current?.stop(); } catch { /* ignore */ }
   };
 
-  const speakNaturally = (text, onFinished) => {
+  // ── 1. NEURAL TTS (edge-tts SwaraNeural via backend, browser fallback) ──────
+  const speakNaturally = async (text, onFinished) => {
     if (!activeRef.current) return;
-    window.speechSynthesis.cancel();
     setStatus('speaking');
     setAssistantText(text);
-    const u = new SpeechSynthesisUtterance(text);
-    const voice = getHumanVoice();
-    if (voice) u.voice = voice;
-    u.lang = lang === 'en' ? 'en-IN' : 'hi-IN';
-    u.rate = 0.94; u.pitch = 1.03;
-    u.onend   = () => { if (activeRef.current && onFinished) onFinished(); };
-    u.onerror = () => { if (activeRef.current && onFinished) onFinished(); };
-    window.speechSynthesis.speak(u);
+    try {
+      const res = await fetch('/api/farmer/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, lang }),
+      });
+      if (!res.ok) throw new Error('TTS unavailable');
+      const blob = await res.blob();
+      if (!activeRef.current) return;
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audioRef.current = audio;
+      audio.onended = () => { URL.revokeObjectURL(url); if (activeRef.current && onFinished) onFinished(); };
+      audio.onerror = () => { URL.revokeObjectURL(url); if (activeRef.current && onFinished) onFinished(); };
+      await audio.play();
+    } catch {
+      // Fallback to browser speechSynthesis when offline
+      if (!activeRef.current) return;
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      const voices = window.speechSynthesis.getVoices();
+      const v = voices.find((x) => x.name.includes('Swara') || x.name.includes('Google हिन्दी') || x.lang === 'hi-IN');
+      if (v) u.voice = v;
+      u.lang = lang === 'en' ? 'en-IN' : 'hi-IN';
+      u.rate = 0.93;
+      u.onend   = () => { if (activeRef.current && onFinished) onFinished(); };
+      u.onerror = () => { if (activeRef.current && onFinished) onFinished(); };
+      window.speechSynthesis.speak(u);
+    }
   };
 
-  // ── STAGE 1: REGISTRATION ────────────────────────────────────────────────
-  const listenRegistrationStep = (idx) => {
+  // ── 2. SMART MIC RECORDING + SILENCE DETECTION + WHISPER STT ───────────────
+  const listenWithSilenceDetection = async (onTranscript) => {
     if (!activeRef.current) return;
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) { alert('कृपया Chrome या Edge म खोलव।'); stopVoice(); return; }
+    setStatus('listening');
+    setLiveCaption('सुनत हंव... बोल के रुक जावव या "हो गया" बटन दबावव');
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      });
+      streamRef.current = stream;
+      const recorder = new MediaRecorder(stream);
+      recorderRef.current = recorder;
+      const chunks = [];
 
+      // Silence detection via Web Audio AnalyserNode
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const source   = audioCtx.createMediaStreamSource(stream);
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 512;
+      source.connect(analyser);
+      const dataArray  = new Uint8Array(analyser.frequencyBinCount);
+      let hasSpoken    = false;
+      let silenceStart = null;
+      const startTime  = Date.now();
+
+      const checkSilence = () => {
+        if (!activeRef.current || recorder.state === 'inactive') { audioCtx.close().catch(() => {}); return; }
+        analyser.getByteFrequencyData(dataArray);
+        const avg = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
+        if (avg > 8) { hasSpoken = true; silenceStart = null; }
+        else if (hasSpoken) {
+          if (!silenceStart) silenceStart = Date.now();
+          if (Date.now() - silenceStart > 1600) { recorder.stop(); return; }
+        } else if (Date.now() - startTime > 8000) {
+          // Total silence for 8s — stop cleanly, do not trigger retry loop
+          stopVoice();
+          return;
+        }
+        requestAnimationFrame(checkSilence);
+      };
+
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+      recorder.onstop = async () => {
+        audioCtx.close().catch(() => {});
+        stream.getTracks().forEach((t) => t.stop());
+        if (!activeRef.current) return;
+        setStatus('processing');
+        const blob = new Blob(chunks, { type: 'audio/webm' });
+        const formData = new FormData();
+        formData.append('audio', blob, 'voice.webm');
+        try {
+          const res  = await fetch('/api/farmer/stt', { method: 'POST', body: formData });
+          const json = await res.json();
+          if (!json.fallback && json.text) { setLiveCaption(json.text); onTranscript(json.text); return; }
+        } catch { /* fall through to browser fallback */ }
+        listenBrowserFallback(onTranscript);
+      };
+      recorder.start();
+      requestAnimationFrame(checkSilence);
+    } catch {
+      listenBrowserFallback(onTranscript);
+    }
+  };
+
+  const listenBrowserFallback = (onTranscript) => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR || !activeRef.current) { onTranscript(''); return; }
     const rec = new SR();
     recognitionRef.current = rec;
-    rec.lang = 'hi-IN';
+    rec.lang = lang === 'en' ? 'en-IN' : 'hi-IN';
     rec.interimResults = true;
     setStatus('listening');
-    setLiveCaption('');
-    let finalSpoken = '';
-
+    let finalTxt = '';
     rec.onresult = (e) => {
       let interim = '';
       for (let i = e.resultIndex; i < e.results.length; i++) {
-        const t = e.results[i][0].transcript;      // ← fixed [0]
-        if (e.results[i].isFinal) finalSpoken += t + ' ';
+        const t = e.results[i][0].transcript;
+        if (e.results[i].isFinal) finalTxt += t + ' ';
         else interim += t;
       }
-      setLiveCaption((finalSpoken + interim).trim());
+      setLiveCaption((finalTxt + interim).trim());
     };
-
-    rec.onend = () => {
-      if (!activeRef.current) return;
-      const clean = finalSpoken.trim();
-      const q = REGISTRATION_QUESTIONS[idx];
-      const parsed = clean ? q.parse(clean) : null;
-      // parsed === 0 is valid (no crop loss), so check !== null && !== undefined
-      if (parsed !== null && parsed !== undefined && parsed !== '') {
-        setRegForm((prev) => ({
-          ...prev,
-          [q.field]: parsed,
-          ...(q.field === 'village' ? { block: parsed } : {}),
-        }));
-        const next = idx + 1;
-        speakNaturally(q.confirm(parsed), () => {
-          if (next < REGISTRATION_QUESTIONS.length) {
-            setStepIndex(next);
-            askRegistrationStep(next);
-          } else {
-            stopVoice();
-            if (onSubmitRegistration) onSubmitRegistration();
-          }
-        });
-      } else {
-        speakNaturally('माफ करहू भैया, ठीक ले सुनाइस नइ। फेर से बतावव — ' + q.ask, () => {
-          listenRegistrationStep(idx);
-        });
-      }
-    };
-
-    rec.onerror = () => {
-      if (activeRef.current)
-        speakNaturally('आवाज नइ आइस भैया, फेर से बोलव।', () => listenRegistrationStep(idx));
-    };
-
+    rec.onend   = () => { if (activeRef.current) onTranscript(finalTxt.trim()); };
+    rec.onerror = () => { if (activeRef.current) onTranscript(''); };
     rec.start();
   };
 
+  const finishSpeakingNow = () => {
+    if (recorderRef.current && recorderRef.current.state !== 'inactive') {
+      try { recorderRef.current.stop(); } catch { /* ignore */ }
+    }
+    try { recognitionRef.current?.stop(); } catch { /* ignore */ }
+  };
+
+  // ── STAGE 1: REGISTRATION FLOW ───────────────────────────────────────────
   const askRegistrationStep = (idx) => {
     if (!activeRef.current) return;
-    speakNaturally(REGISTRATION_QUESTIONS[idx].ask, () => listenRegistrationStep(idx));
+    const questions = getRegistrationQuestions(lang);
+    const q = questions[idx];
+    speakNaturally(q.ask, () => {
+      listenWithSilenceDetection((spoken) => {
+        if (!activeRef.current) return;
+        const parsed = spoken ? q.parse(spoken) : null;
+        if (parsed !== null && parsed !== undefined && parsed !== '') {
+          retryCountRef.current = 0;
+          setRegForm((prev) => ({
+            ...prev,
+            [q.field]: parsed,
+            ...(q.field === 'village' ? { block: parsed } : {}),
+          }));
+          const next = idx + 1;
+          speakNaturally(q.confirm(parsed), () => {
+            if (next < questions.length) { setStepIndex(next); askRegistrationStep(next); }
+            else { stopVoice(); if (onSubmitRegistration) onSubmitRegistration(); }
+          });
+        } else if (retryCountRef.current < 1) {
+          retryCountRef.current += 1;
+          const shortRetry = lang === 'en'
+            ? 'Please repeat that once more.'
+            : 'कृपया एक बार फिर से बोलें।';
+          speakNaturally(shortRetry, () => askRegistrationStep(idx));
+        } else {
+          retryCountRef.current = 0;
+          const pauseMsg = lang === 'en'
+            ? 'Voice paused. Please type this field manually.'
+            : 'आवाज़ स्पष्ट नहीं होने के कारण वॉइस रोका गया है। कृपया यह विवरण टाइप करें।';
+          speakNaturally(pauseMsg, () => stopVoice());
+        }
+      });
+    });
   };
 
   const startVoiceRegistration = () => {
     activeRef.current = true;
+    retryCountRef.current = 0;
     setActive(true);
     setStepIndex(0);
     askRegistrationStep(0);
@@ -272,66 +380,39 @@ export default function KisanVoiceSaathi({
     if (!record) return;
     activeRef.current = true;
     setActive(true);
-
     const kcc = Number(record.eligible_kcc_limit || 0).toLocaleString('en-IN');
-    const gap = Number(record.total_shortfall || 0).toLocaleString('en-IN');
-
+    const gap = Number(record.total_shortfall    || 0).toLocaleString('en-IN');
     const speech = lang === 'en'
-      ? `Hello ${record.owner_name}. Your ${record.area_hectares} ha ${record.actual_irrigation} plot qualifies for ₹${kcc} KCC credit, collateral-free up to ₹2 lakh, at 4% interest. Paddy MSP is ₹3,100 per quintal. PMFBY insures irrigated land at ₹66,000 per hectare. ${record.total_shortfall > 0 ? `You have a shortfall of ₹${gap}. Say "file complaint" to lodge your grievance.` : 'All payouts verified.'}`
-      : `राम-राम ${record.owner_name} जी! तुंहर ${record.area_hectares} हेक्टेयर ${record.actual_irrigation === 'Irrigated' ? 'सिंचित' : 'असिंचित'} जमीन म मिलने वाला सरकारी सुविधा: `
-        + `पहिली — धान MSP ₹3,100 प्रति क्विंटल। `
-        + `दुसर — आप ₹${kcc} KCC ऋण के पात्र हव, ₹2 लाख तक बिना गारंटी, 4% ब्याज। `
-        + `तिसर — PMFBY म सिंचित जमीन बर ₹66,000 प्रति हेक्टेयर बीमा, 33% ले ज्यादा नुकसान म ऋण पुनर्गठन। `
-        + (record.total_shortfall > 0
-          ? `तुंहर खाता म ₹${gap} के कमी हे। शिकायत दर्ज करना हे त बोलव।`
-          : 'तुंहर सबो हिसाब सही हे भैया।');
+      ? `Hello ${record.owner_name}. For your ${record.area_hectares} hectares of ${record.actual_irrigation} land, you qualify for ₹${kcc} KCC credit at 4 percent interest, collateral-free up to 2 lakh rupees. Paddy MSP is ₹3,100 per quintal, and PMFBY covers ₹66,000 per hectare. ${record.total_shortfall > 0 ? `You have a shortfall of ₹${gap}. Say File Complaint to lodge your grievance now.` : 'All your payouts are verified.'}`
+      : lang === 'hi'
+        ? `नमस्ते ${record.owner_name} जी। आपके ${record.area_hectares} हेक्टेयर ${record.actual_irrigation === 'Irrigated' ? 'सिंचित' : 'असिंचित'} भूमि पर उपलब्ध सरकारी योजनाओं का विवरण: `
+          + `पहला, धान खरीदी (MSP) दर ₹3,100 प्रति क्विंटल निर्धारित है। `
+          + `दूसरा, आप ₹${kcc} तक KCC कृषि ऋण के पात्र हैं, ₹2 लाख तक बिना गारंटी, 4 प्रतिशत ब्याज। `
+          + `तीसरा, PMFBY के अंतर्गत सिंचित भूमि पर ₹66,000 प्रति हेक्टेयर बीमा सुरक्षा उपलब्ध है। `
+          + (record.total_shortfall > 0
+            ? `आपके खाते में ₹${gap} का अंतर पाया गया है। शिकायत दर्ज करने के लिए बोलें।`
+            : 'आपके सभी रिकॉर्ड नियमों के अनुरूप सत्यापित हैं।')
+        : `नमस्ते ${record.owner_name} जी। तुंहर ${record.area_hectares} हेक्टेयर ${record.actual_irrigation === 'Irrigated' ? 'सिंचित' : 'असिंचित'} जमीन म मिलने वाला सुविधा जानव: `
+          + `धान खरीदी के ₹3,100 प्रति क्विंटल दर तय हे। `
+          + `आप ₹${kcc} तक के-सी-सी कृषि ऋण के पात्र हव, दो लाख रुपये तक बिना गारंटी, चार प्रतिशत ब्याज। `
+          + `फसल बीमा म सिंचित जमीन बर ₹66,000 प्रति हेक्टेयर सुरक्षा मिलथे। `
+          + (record.total_shortfall > 0
+            ? `तुंहर खाता म ₹${gap} के कमी मिले हे। शिकायत दर्ज करे बर बोलव।`
+            : 'तुंहर सबो हिसाब बिल्कुल सही हे।');
 
     speakNaturally(speech, () => {
-      if (record.total_shortfall > 0) listenForGrievanceConfirm();
-      else stopVoice();
+      if (record.total_shortfall > 0) {
+        listenWithSilenceDetection((spoken) => {
+          const t = (spoken || '').toLowerCase();
+          if (t.includes('शिकायत') || t.includes('दर्ज') || t.includes('हाँ') || t.includes('हा') || t.includes('complaint') || t.includes('yes')) {
+            speakNaturally('ठीक हे भैया, तुंहर शिकायत पत्र अभी दर्ज करत हंव।', () => {
+              stopVoice();
+              if (onFileGrievance) onFileGrievance();
+            });
+          } else { stopVoice(); }
+        });
+      } else { stopVoice(); }
     });
-  };
-
-  const listenForGrievanceConfirm = () => {
-    if (!activeRef.current) return;
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) { stopVoice(); return; }
-
-    const rec = new SR();
-    recognitionRef.current = rec;
-    rec.lang = lang === 'en' ? 'en-IN' : 'hi-IN';
-    rec.interimResults = true;
-    setStatus('listening');
-    setLiveCaption('');
-    let spoken = '';
-
-    rec.onresult = (e) => {
-      let interim = '';
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        const t = e.results[i][0].transcript;      // ← fixed [0]
-        if (e.results[i].isFinal) spoken += t + ' ';
-        else interim += t;
-      }
-      setLiveCaption((spoken + interim).trim());
-    };
-
-    rec.onend = () => {
-      if (!activeRef.current) return;
-      const t = spoken.toLowerCase();
-      if (t.includes('शिकायत') || t.includes('दर्ज') || t.includes('हाँ') || t.includes('हा') || t.includes('complaint') || t.includes('yes')) {
-        speakNaturally(
-          lang === 'en'
-            ? 'Filing your official complaint now.'
-            : 'ठीक हे भैया, तुंहर शिकायत पत्र अभी दर्ज करत हंव।',
-          () => { stopVoice(); if (onFileGrievance) onFileGrievance(); }
-        );
-      } else {
-        stopVoice();
-      }
-    };
-
-    rec.onerror = () => stopVoice();
-    rec.start();
   };
 
   // ── RENDER ─────────────────────────────────────────────────────────────────
@@ -341,49 +422,65 @@ export default function KisanVoiceSaathi({
         <div>
           <p className="text-sm font-bold text-emerald-900 flex items-center gap-1.5">
             <Sparkles className="w-4 h-4 text-amber-500" />
-            {lang === 'en' ? 'Kisan Saathi — Voice Guide' : 'किसान संगवारी — बोल के सबो काम करव'}
+            {lang === 'en' ? 'Kisan Saathi — Natural Voice Assistant' : 'किसान संगवारी — बोल के सबो काम करव'}
           </p>
           <p className="text-xs text-emerald-700 mt-0.5">
             {mode === 'register'
               ? 'एक बार दबाके अपन नाम, गांव अऊ जमीन बतावव — फॉर्म अपने-आप भरा जही'
-              : lang === 'en'
-                ? 'Listen to all schemes, loan limits, and file complaints hands-free'
-                : 'अपन योजना, KCC छूट अऊ बीमा के नियम सुनव अऊ शिकायत दर्ज करव'}
+              : lang === 'en' ? 'Listen to all schemes, loan limits, and file complaints hands-free'
+              : 'अपन योजना, KCC छूट अऊ बीमा के नियम सुनव अऊ शिकायत दर्ज करव'}
           </p>
         </div>
 
-        {!active ? (
-          <button
-            type="button"
-            onClick={mode === 'register' ? startVoiceRegistration : startSchemeExplainer}
-            className="bg-amber-400 hover:bg-amber-300 text-stone-950 font-bold px-4 py-2.5 rounded-xl text-sm flex items-center gap-2 shadow transition"
-          >
-            <Mic className="w-4 h-4" />
-            {mode === 'register'
-              ? 'Register with Voice'
-              : lang === 'en' ? 'Explain My Schemes' : 'मोर योजना सुनव'}
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={stopVoice}
-            className="bg-red-500 hover:bg-red-600 text-white font-bold px-4 py-2.5 rounded-xl text-sm flex items-center gap-2 transition animate-pulse"
-          >
-            <Square className="w-4 h-4" />
-            {mode === 'register' ? `Stop (${stepIndex + 1}/${REGISTRATION_QUESTIONS.length})` : 'Stop'}
-          </button>
-        )}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* "Done speaking" button — appears only while mic is active */}
+          {active && status === 'listening' && (
+            <button
+              type="button"
+              onClick={finishSpeakingNow}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-2 rounded-xl text-xs flex items-center gap-1.5 transition"
+            >
+              <CheckCircle2 className="w-4 h-4" /> बोलना हो गया (Done)
+            </button>
+          )}
+
+          {!active ? (
+            <button
+              type="button"
+              onClick={mode === 'register' ? startVoiceRegistration : startSchemeExplainer}
+              className="bg-amber-400 hover:bg-amber-300 text-stone-950 font-bold px-4 py-2.5 rounded-xl text-sm flex items-center gap-2 shadow transition"
+            >
+              <Mic className="w-4 h-4" />
+              {mode === 'register' ? 'Register with Voice' : lang === 'en' ? 'Explain My Schemes' : 'मोर योजना सुनव'}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={stopVoice}
+              className="bg-red-500 hover:bg-red-600 text-white font-bold px-4 py-2.5 rounded-xl text-sm flex items-center gap-2 transition animate-pulse"
+            >
+              <Square className="w-4 h-4" />
+              {mode === 'register' ? `Stop (${stepIndex + 1}/${getRegistrationQuestions(lang).length})` : 'Stop'}
+            </button>
+          )}
+        </div>
       </div>
 
       {active && (
         <div className="bg-white border border-emerald-200 rounded-xl p-3 space-y-2">
           <div className="flex items-center gap-2 text-xs font-bold">
-            {status === 'speaking'
-              ? <><Volume2 className="w-4 h-4 text-emerald-600 animate-pulse" /><span className="text-emerald-700">Speaking:</span></>
-              : <><Mic className="w-4 h-4 text-amber-500 animate-pulse" /><span className="text-amber-700">Listening:</span></>}
+            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full font-bold ${
+              status === 'speaking'   ? 'bg-blue-100 text-blue-800' :
+              status === 'processing' ? 'bg-amber-100 text-amber-800' :
+                                        'bg-red-100 text-red-700 animate-pulse'
+            }`}>
+              {status === 'speaking'   ? <><Volume2 className="w-3.5 h-3.5" /> संगवारी बोलत हे:</> :
+               status === 'processing' ? <>⟳ समझत हंव...</> :
+                                         <><Mic className="w-3.5 h-3.5" /> अब आप बोलव:</>}
+            </span>
           </div>
           {assistantText && <p className="text-sm text-slate-800 leading-relaxed">{assistantText}</p>}
-          {liveCaption && <p className="text-xs text-slate-500 italic">Heard: &ldquo;{liveCaption}&rdquo;</p>}
+          {liveCaption   && <p className="text-xs text-slate-500 italic">&ldquo;{liveCaption}&rdquo;</p>}
         </div>
       )}
     </div>
